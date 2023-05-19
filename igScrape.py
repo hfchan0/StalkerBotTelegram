@@ -60,7 +60,7 @@ def scrape(username):
     browser.get(url)
     print (f"Attempting: {browser.current_url}")
     if "login" in browser.current_url:
-        print ("Failed/ redir to login")
+        print ("Failed, redirect to login...")
         browser.quit()
     else:
         print ("Success")
