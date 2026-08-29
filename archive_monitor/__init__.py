@@ -1,0 +1,1 @@
+"""Authorized Instagram archive monitor."""

@@ -1,0 +1,14 @@
+services:
+  monitor:
+    build: .
+    container_name: instagram-archive-monitor
+    env_file: .env
+    volumes:
+      - ./data:/data
+      - ./secrets/instagram-cookies.txt:/run/secrets/instagram-cookies.txt:ro
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
