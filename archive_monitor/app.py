@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .instagram import InstaloaderSource
-from .maintenance import create_monthly_backup, remove_expired_media
+from .maintenance import create_monthly_backup, remove_expired_media, trim_archive_to_size
 from .monitor import Monitor
 from .telegram import RequestsTelegramTransport, TelegramPublisher
 
@@ -41,6 +41,11 @@ def main() -> None:
             count = monitor.run_once()
             LOGGER.info("Monitor cycle complete: %s new items", count)
             remove_expired_media(data_dir / "archive", int(os.getenv("RETENTION_DAYS", "365")))
+            removed = trim_archive_to_size(
+                data_dir / "archive", int(os.getenv("MAX_ARCHIVE_BYTES", str(15 * 1024**3)))
+            )
+            if removed:
+                publisher.alert(f"Archive quota removed {removed} oldest media files.")
             current_month = datetime.now(timezone.utc).strftime("%Y-%m")
             if _backup_month_marker(data_dir).read_text().strip() != current_month:
                 _create_backup(data_dir, current_month, publisher)
