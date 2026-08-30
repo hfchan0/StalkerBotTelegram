@@ -39,6 +39,10 @@ TELEGRAM_BOT_TOKEN=your-real-token
 TELEGRAM_CHANNEL_CHAT_ID=-1001234567890
 TELEGRAM_ALERT_CHAT_ID=123456789
 POLL_INTERVAL_MINUTES=20
+SCHEDULED_MONITORING=false
+MONITOR_POSTS_AND_REELS=false
+RATE_LIMIT_PAUSE_MINUTES=60
+AUTH_FAILURE_LIMIT=3
 RETENTION_DAYS=365
 # 15 GiB hard cap; oldest media is deleted first when this is exceeded.
 MAX_ARCHIVE_BYTES=16106127360
@@ -76,7 +80,21 @@ Expected behavior:
 
 The first scan can download older unseen media. Start with one authorized account and inspect the Telegram channel before adding the second.
 
+By default, scheduled monitoring is disabled. The service contacts Instagram only after you use `/stories` or `/download` in Telegram. Set `SCHEDULED_MONITORING=true` only when you want periodic checks. With scheduled monitoring enabled, it checks only active Stories by default. Set `MONITOR_POSTS_AND_REELS=true` only when you also want post/Reel monitoring; that mode makes substantially more Instagram requests and can download historical media on its first run. When Instagram returns HTTP 429, the monitor sends one alert and waits 60 minutes before its next attempt. Change `RATE_LIMIT_PAUSE_MINUTES` only to make this longer, not shorter.
+
 Press `Ctrl+C` to stop following logs; it does not stop the monitor.
+
+## Download Active Stories On Demand
+
+In the personal Telegram chat you used for `TELEGRAM_ALERT_CHAT_ID`, send the bot `/stories`. It shows buttons for only the accounts in `INSTAGRAM_USERNAMES`. Select one button to immediately download and forward its currently active Stories. You can also type an allowed username directly, for example `/stories creator_one`.
+
+This cannot recover expired Stories and does not download profile posts or Reels. The account picker accepts commands only from your configured personal alert chat; do not change that chat ID to a public group.
+
+To download a selected post or Reel, send `/download ` followed by its full Instagram URL, for example `/download https://www.instagram.com/p/POST_CODE/`. The bot downloads the photos/videos only when the linked post belongs to an account in `INSTAGRAM_USERNAMES`.
+
+Send `/pause` in the same personal chat to stop scheduled Instagram checks without stopping the container. Send `/resume` to enable scheduled checks again. These commands take effect until the container restarts.
+
+Send `/help` (or `/start`) in the same chat to see the available commands.
 
 ## Operations
 
@@ -96,7 +114,7 @@ To replace expired cookies:
 
 1. Export a fresh Chrome `cookies.txt`.
 2. Replace `secrets/instagram-cookies.txt`.
-3. Run `docker compose restart monitor`.
+3. Run `docker compose restart monitor`. After three consecutive authentication alerts, the monitor pauses polling until this restart, preventing repeated Telegram alerts.
 
 ## Backups And Disk Space
 

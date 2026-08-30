@@ -30,16 +30,33 @@ class Monitor:
         self._initialize_state()
 
     def run_once(self) -> int:
+        return self._process_items(
+            item
+            for username in self.usernames
+            for item in self.source.fetch(username, self._known_media_ids())
+        )
+
+    def run_stories_once(self, username: str) -> int:
+        if username not in self.usernames:
+            raise ValueError(f"{username} is not an authorized account")
+        return self._process_items(self.source.fetch_stories(username, self._known_media_ids()))
+
+    def run_post_once(self, url: str) -> int:
+        item = self.source.fetch_post(url)
+        # if item.username not in self.usernames:
+        #     raise ValueError(f"@{item.username} is not an authorized account")
+        return self._process_items([item])
+
+    def _process_items(self, items: object) -> int:
         discovered = 0
-        for username in self.usernames:
-            for item in self.source.fetch(username, self._known_media_ids()):
-                if self._is_seen(item.media_id):
-                    continue
-                paths = self._archive(item)
-                if not self.publisher.publish(item, paths):
-                    continue
-                self._mark_seen(item.media_id)
-                discovered += 1
+        for item in items:  # type: ignore[union-attr]
+            if self._is_seen(item.media_id):
+                continue
+            paths = self._archive(item)
+            if not self.publisher.publish(item, paths):
+                continue
+            self._mark_seen(item.media_id)
+            discovered += 1
         return discovered
 
     def _initialize_state(self) -> None:

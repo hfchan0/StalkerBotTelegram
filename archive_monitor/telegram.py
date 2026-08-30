@@ -22,16 +22,31 @@ class RequestsTelegramTransport:
         if file_path is None:
             response = requests.post(url, json=payload, timeout=60)
         else:
+            media_field = {"sendPhoto": "photo", "sendVideo": "video"}.get(method)
+            if media_field is None:
+                raise ValueError(f"Unsupported Telegram media method: {method}")
             with Path(file_path).open("rb") as media:
                 response = requests.post(
                     url,
                     data=payload,
-                    files={"media": (Path(file_path).name, media)},
+                    files={media_field: (Path(file_path).name, media)},
                     timeout=300,
                 )
         response.raise_for_status()
         if not response.json().get("ok"):
             raise RuntimeError("Telegram API rejected the request")
+
+    def get_updates(self, offset: int | None) -> list[dict]:
+        response = requests.get(
+            f"https://api.telegram.org/bot{self.bot_token}/getUpdates",
+            params={"offset": offset, "timeout": 30},
+            timeout=40,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not payload.get("ok"):
+            raise RuntimeError("Telegram API rejected getUpdates")
+        return payload["result"]
 
 
 class TelegramPublisher:

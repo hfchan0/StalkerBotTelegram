@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from archive_monitor.models import MediaItem
-from archive_monitor.telegram import TelegramPublisher
+from archive_monitor.telegram import RequestsTelegramTransport, TelegramPublisher
 
 
 class FakeTransport:
@@ -52,3 +52,26 @@ def test_publish_alerts_and_retains_media_larger_than_limit(tmp_path: Path) -> N
     assert [method for method, _ in transport.calls] == ["sendMessage"]
     assert "too large" in transport.calls[0][1]["text"]
     assert media_path.exists()
+
+
+def test_requests_transport_uses_telegram_media_field_for_method(tmp_path: Path, monkeypatch) -> None:
+    media_path = tmp_path / "photo.jpg"
+    media_path.write_bytes(b"image")
+    request_arguments: dict = {}
+
+    class Response:
+        def raise_for_status(self) -> None:
+            pass
+
+        def json(self) -> dict:
+            return {"ok": True}
+
+    def post(url: str, **kwargs: object) -> Response:
+        request_arguments.update(kwargs)
+        return Response()
+
+    monkeypatch.setattr("archive_monitor.telegram.requests.post", post)
+
+    RequestsTelegramTransport("token").post("sendPhoto", {"chat_id": "123", "file": str(media_path)})
+
+    assert set(request_arguments["files"]) == {"photo"}

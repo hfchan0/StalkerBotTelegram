@@ -14,9 +14,16 @@ LOGGER = logging.getLogger(__name__)
 class InstaloaderSource:
     """Fetches media only from the explicit, authorized username allowlist."""
 
-    def __init__(self, cookie_path: Path, staging_dir: Path, include_stories: bool = True) -> None:
+    def __init__(
+        self,
+        cookie_path: Path,
+        staging_dir: Path,
+        include_stories: bool = True,
+        include_posts_and_reels: bool = False,
+    ) -> None:
         self.staging_dir = staging_dir
         self.include_stories = include_stories
+        self.include_posts_and_reels = include_posts_and_reels
         self.loader = instaloader.Instaloader(
             dirname_pattern=str(staging_dir / "{target}"),
             download_comments=False,
@@ -24,26 +31,46 @@ class InstaloaderSource:
             compress_json=False,
             post_metadata_txt_pattern="",
             storyitem_metadata_txt_pattern="",
+            max_connection_attempts=1,
             quiet=True,
         )
         self._load_cookies(cookie_path)
 
     def fetch(self, username: str, known_media_ids: set[str]) -> list[MediaItem]:
         profile = instaloader.Profile.from_username(self.loader.context, username)
-        posts_and_reels = list(profile.get_posts()) + list(profile.get_reels())
-        result = [
-            self._download_post(post, username)
-            for post in posts_and_reels
-            if f"post-{post.mediaid}" not in known_media_ids
-        ]
+        result = []
+        if self.include_posts_and_reels:
+            posts_and_reels = list(profile.get_posts()) + list(profile.get_reels())
+            result.extend(
+                self._download_post(post, username)
+                for post in posts_and_reels
+                if f"post-{post.mediaid}" not in known_media_ids
+            )
         if self.include_stories:
-            for story in self.loader.get_stories(userids=[profile.userid]):
-                result.extend(
-                    self._download_story(item, username)
-                    for item in story.get_items()
-                    if f"story-{item.mediaid}" not in known_media_ids
-                )
+            result.extend(self.fetch_stories(username, known_media_ids, profile))
         return result
+
+    def fetch_stories(
+        self, username: str, known_media_ids: set[str], profile: instaloader.Profile | None = None
+    ) -> list[MediaItem]:
+        profile = profile or instaloader.Profile.from_username(self.loader.context, username)
+        return [
+            self._download_story(item, username)
+            for story in self.loader.get_stories(userids=[profile.userid])
+            for item in story.get_items()
+            if f"story-{item.mediaid}" not in known_media_ids
+        ]
+
+    def fetch_post(self, url: str) -> MediaItem:
+        post = instaloader.Post.from_shortcode(self.loader.context, self._shortcode_from_url(url))
+        return self._download_post(post, post.owner_username)
+
+    @staticmethod
+    def _shortcode_from_url(url: str) -> str:
+        path_parts = [part for part in url.split("?")[0].split("/") if part]
+        if len(path_parts) < 2 or path_parts[-2] not in {"p", "reel"}:
+            raise ValueError("URL must be an Instagram post or Reel link")
+        return path_parts[-1]
 
     def _download_post(self, post: instaloader.Post, username: str) -> MediaItem:
         return self._download(
@@ -77,9 +104,9 @@ class InstaloaderSource:
         published_at: str,
         download: object,
     ) -> MediaItem:
-        target = f"{username}/{media_id}"
+        target = f"{username}--{media_id}"
         download(target)  # type: ignore[operator]
-        item_dir = self.staging_dir / username / media_id
+        item_dir = self.staging_dir / target
         files = [
             (path.name, path.read_bytes())
             for path in item_dir.iterdir()
@@ -98,6 +125,6 @@ class InstaloaderSource:
         for cookie in cookies:
             if "instagram.com" in cookie.domain:
                 self.loader.context._session.cookies.set_cookie(cookie)
-        if not self.loader.context._session.cookies.get("sessionid"):
+        if not any(cookie.name == "sessionid" for cookie in self.loader.context._session.cookies):
             raise RuntimeError("cookies.txt does not contain an Instagram sessionid cookie")
         LOGGER.info("Loaded authenticated Instagram browser cookies")
